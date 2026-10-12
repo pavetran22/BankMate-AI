@@ -1,0 +1,32 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements-dev.txt
+      - name: Unit and API tests (offline)
+        run: pytest -q
+      - name: Offline eval (regression check)
+        run: python -m evals.run_evals
+      - uses: actions/upload-artifact@v4
+        with:
+          name: eval-report
+          path: evals/results/latest.md
+
+  docker:
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t bankmate-ai .

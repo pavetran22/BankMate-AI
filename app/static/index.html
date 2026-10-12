@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BankMate AI</title>
+<style>
+  :root {
+    --bg: #faf7f4; --panel: #ffffff; --ink: #2e2a28; --muted: #7a706b;
+    --accent: #d9774b; --accent-soft: #fce3d3; --line: #ece4dd; --danger: #b3402e;
+    --user: #2e2a28;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+         background: var(--bg); color: var(--ink); height: 100vh; display: flex; flex-direction: column; }
+  header { display: flex; align-items: center; gap: 12px; padding: 14px 20px;
+           background: var(--panel); border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+  .logo { width: 34px; height: 34px; border-radius: 9px; background: var(--accent);
+          color: #fff; display: grid; place-items: center; font-weight: 700; }
+  h1 { font-size: 17px; margin: 0; }
+  .sub { font-size: 12px; color: var(--muted); }
+  .spacer { flex: 1; }
+  select { font: inherit; padding: 7px 10px; border: 1px solid var(--line); border-radius: 8px; background: #fff; }
+  .badge { font-size: 11px; padding: 3px 8px; border-radius: 99px; background: var(--accent-soft); color: var(--accent); }
+  main { flex: 1; overflow-y: auto; padding: 20px; }
+  .wrap { max-width: 760px; margin: 0 auto; display: flex; flex-direction: column; gap: 14px; }
+  .msg { padding: 12px 14px; border-radius: 12px; line-height: 1.5; font-size: 14.5px; max-width: 88%; }
+  .user { align-self: flex-end; background: var(--user); color: #fff; border-bottom-right-radius: 4px; }
+  .bot { align-self: flex-start; background: var(--panel); border: 1px solid var(--line); border-bottom-left-radius: 4px; }
+  .bot.blocked { border-color: var(--danger); }
+  .bot ul { margin: 6px 0; padding-left: 20px; }
+  .cite { color: var(--accent); font-size: 12px; font-weight: 600; }
+  .meta { margin-top: 10px; display: flex; flex-wrap: wrap; gap: 6px; font-size: 11.5px; }
+  .chip { padding: 2px 8px; border-radius: 99px; background: #f3eee9; color: var(--muted); }
+  .chip.tool { background: var(--accent-soft); color: #9a4a26; }
+  .chip.flag { background: #f8dcd6; color: var(--danger); }
+  details { margin-top: 8px; font-size: 12.5px; color: var(--muted); }
+  details p { margin: 6px 0; padding-left: 10px; border-left: 2px solid var(--accent-soft); }
+  .suggest { display: flex; flex-wrap: wrap; gap: 8px; }
+  .suggest button { font: inherit; font-size: 13px; padding: 7px 12px; border-radius: 99px;
+                    border: 1px solid var(--line); background: #fff; cursor: pointer; color: var(--ink); }
+  .suggest button:hover { border-color: var(--accent); color: var(--accent); }
+  .empty { text-align: center; color: var(--muted); margin-top: 6vh; }
+  .empty h2 { color: var(--ink); font-size: 20px; }
+  form { display: flex; gap: 10px; padding: 14px 20px; background: var(--panel); border-top: 1px solid var(--line); }
+  form .wrap { flex-direction: row; width: 100%; }
+  input[type=text] { flex: 1; font: inherit; padding: 12px 14px; border: 1px solid var(--line); border-radius: 10px; min-width: 0; }
+  input[type=text]:focus { outline: 2px solid var(--accent-soft); border-color: var(--accent); }
+  button.send { font: inherit; padding: 0 18px; border: 0; border-radius: 10px; background: var(--accent); color: #fff; cursor: pointer; }
+  button.send:disabled { opacity: .5; }
+  .typing { color: var(--muted); font-size: 13px; }
+</style>
+</head>
+<body>
+<header>
+  <div class="logo">B</div>
+  <div><h1>BankMate AI</h1><div class="sub">Nusa Bank (fictional) · policy Q&amp;A + fraud checks</div></div>
+  <div class="spacer"></div>
+  <span class="badge" id="mode">…</span>
+  <label class="sub" for="customer">Signed in as</label>
+  <select id="customer"></select>
+</header>
+
+<main id="scroll"><div class="wrap" id="chat">
+  <div class="empty" id="empty">
+    <h2>How can I help today?</h2>
+    <p>Ask about fees and policies, or check your account for anything suspicious.</p>
+    <div class="suggest" id="suggest" style="justify-content:center"></div>
+  </div>
+</div></main>
+
+<form id="form"><div class="wrap">
+  <input type="text" id="input" placeholder="Ask BankMate…" autocomplete="off" maxlength="2000">
+  <button class="send" id="send">Send</button>
+</div></form>
+
+<script>
+const SUGGESTIONS = [
+  "Does anything look suspicious on my account?",
+  "Is TX-C002-9001 fraud, and how do I dispute it?",
+  "What's the late payment charge on my credit card?",
+  "Someone used my card overseas. Am I liable?",
+  "How do I raise my daily transfer limit?",
+  "Show my recent transactions",
+];
+let sessionId = null;
+const $ = (id) => document.getElementById(id);
+
+function esc(s) { return s.replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
+function render(md) {
+  const lines = esc(md).split("\n");
+  let html = "", inList = false;
+  for (const raw of lines) {
+    let line = raw.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
+                  .replace(/_(\(.+?\))_/g, "<em>$1</em>")
+                  .replace(/\[([a-z0-9-]+#[a-z0-9-]+)\]/g, '<span class="cite">[$1]</span>');
+    const m = line.match(/^\s*[-*•]\s+(.*)/);
+    if (m) { if (!inList) { html += "<ul>"; inList = true; } html += `<li>${m[1]}</li>`; continue; }
+    if (inList) { html += "</ul>"; inList = false; }
+    html += line.trim() ? `<div>${line}</div>` : "<div style='height:8px'></div>";
+  }
+  return html + (inList ? "</ul>" : "");
+}
+
+function add(cls, html) {
+  $("empty")?.remove();
+  const div = document.createElement("div");
+  div.className = "msg " + cls; div.innerHTML = html;
+  $("chat").appendChild(div); $("scroll").scrollTop = 1e9;
+  return div;
+}
+
+async function send(text) {
+  if (!text.trim()) return;
+  add("user", esc(text));
+  $("input").value = ""; $("send").disabled = true;
+  const pending = add("bot", '<span class="typing">Thinking…</span>');
+  try {
+    const res = await fetch("/api/chat", {
+      method: "POST",
+      headers: {"Content-Type": "application/json", "X-Customer-Id": $("customer").value},
+      body: JSON.stringify({message: text, session_id: sessionId}),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail || res.statusText);
+    sessionId = data.session_id;
+    let html = render(data.answer);
+    const chips = [
+      ...data.tools_used.map(t => `<span class="chip tool">⚙ ${esc(t.tool)}</span>`),
+      ...data.guardrail_flags.map(f => `<span class="chip flag">🛡 ${esc(f)}</span>`),
+      `<span class="chip">${data.latency_ms} ms</span>`,
+    ];
+    html += `<div class="meta">${chips.join("")}</div>`;
+    if (data.citations.length) {
+      html += `<details><summary>Sources (${data.citations.length})</summary>` +
+        data.citations.map(c => `<p><strong>${esc(c.document)} › ${esc(c.section)}</strong><br>${esc(c.text)}</p>`).join("") +
+        `</details>`;
+    }
+    pending.innerHTML = html;
+    if (data.blocked) pending.classList.add("blocked");
+  } catch (e) {
+    pending.innerHTML = `<span style="color:var(--danger)">Error: ${esc(e.message)}</span>`;
+  } finally { $("send").disabled = false; $("input").focus(); }
+}
+
+async function init() {
+  const [customers, health] = await Promise.all([
+    fetch("/api/customers").then(r => r.json()), fetch("/health").then(r => r.json())]);
+  $("customer").innerHTML = customers.map(c =>
+    `<option value="${c.customer_id}">${esc(c.name)} (${c.customer_id})</option>`).join("");
+  $("customer").value = "C002";
+  $("mode").textContent = health.offline_mode ? "Offline demo" : health.model;
+  $("customer").onchange = () => { sessionId = null; $("chat").innerHTML = ""; add("bot", "Switched customer. New conversation started."); };
+  $("suggest").innerHTML = SUGGESTIONS.map(s => `<button type="button">${esc(s)}</button>`).join("");
+  $("suggest").onclick = (e) => { if (e.target.tagName === "BUTTON") send(e.target.textContent); };
+}
+$("form").onsubmit = (e) => { e.preventDefault(); send($("input").value); };
+init();
+</script>
+</body>
+</html>

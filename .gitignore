@@ -1,0 +1,9 @@
+.env
+__pycache__/
+*.pyc
+.pytest_cache/
+data/index/
+data/bank.db
+evals/results/
+.venv/
+tests/.test_bank.db

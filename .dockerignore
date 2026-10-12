@@ -1,0 +1,9 @@
+.env
+.git
+__pycache__
+*.pyc
+.pytest_cache
+data/bank.db
+data/index
+evals/results
+tests
