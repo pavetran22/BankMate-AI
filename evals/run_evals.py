@@ -21,6 +21,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import re
 import statistics
 import sys
 import time
@@ -126,7 +127,26 @@ async def eval_end_to_end(cases: list[dict], judge: bool) -> dict:
     svc = BankMateService()
     rows = []
     for case in cases:
-        result = (await svc.chat(case["customer_id"], case["question"])).to_dict()
+        result = None
+        for attempt in range(6):
+            try:
+                result = (await svc.chat(case["customer_id"], case["question"])).to_dict()
+                break
+            except Exception as exc:
+                err_str = str(exc)
+                if any(k in err_str for k in ("429", "RESOURCE_EXHAUSTED", "503", "UNAVAILABLE")) and attempt < 5:
+                    delay = 15.0
+                    m = re.search(r"retry in ([0-9.]+)s", err_str, re.IGNORECASE) or re.search(r"retryDelay': '([0-9.]+)s", err_str)
+                    if m:
+                        delay = float(m.group(1)) + 1.5
+                    elif "503" in err_str or "UNAVAILABLE" in err_str:
+                        delay = 5.0 * (attempt + 1)
+                    if delay > 120.0:
+                        raise exc
+                    print(f"    [Rate limit / capacity: waiting {delay:.1f}s for {case['id']} (attempt {attempt + 1}/5)...]")
+                    await asyncio.sleep(delay)
+                    continue
+                raise
         checks = grade(case, result)
         row = {"id": case["id"], "question": case["question"], "passed": all(checks.values()),
                "checks": checks, "tools": [t["tool"] for t in result["tools_used"]],
@@ -138,6 +158,8 @@ async def eval_end_to_end(cases: list[dict], judge: bool) -> dict:
         status = "PASS" if row["passed"] else "FAIL"
         failed = [k for k, v in checks.items() if not v]
         print(f"  {status}  {case['id']:<9} {result['latency_ms']:>6} ms  {'' if not failed else failed}")
+        if not result.get("blocked"):
+            await asyncio.sleep(4.0)
 
     def rate(key: str) -> float | None:
         vals = [r["checks"][key] for r in rows if key in r["checks"]]

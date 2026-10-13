@@ -122,22 +122,20 @@ python -m evals.run_evals          # retrieval + end-to-end report -> evals/resu
 python -m evals.run_evals --judge  # adds Gemini LLM-as-judge (needs key)
 ```
 
-**Offline baseline** (scripted model, BM25 only):
+**Offline baseline vs Gemini** (`gemini-flash-lite-latest` + hybrid retrieval):
 
-| Metric | Offline |
-|---|---|
-| Retrieval hit@3 / MRR | 100% / 0.90 |
-| Tool selection accuracy | 96% |
-| Citation accuracy | 94% |
-| Attack block rate | 100% |
-| PII protection | 100% |
-| Overall pass rate | 93% (25/27) |
+| Metric | Offline | Gemini |
+|---|---|---|
+| Retrieval hit@3 / MRR | 100% / 0.90 | 100% / 1.00 |
+| Tool selection accuracy | 96% | 96% |
+| Citation accuracy | 94% | 100% |
+| Attack block rate | 100% | 100% |
+| PII protection | 100% | 100% |
+| Overall pass rate | 93% (25/27) | 96% (26/27) |
 
 The two offline failures are deliberate stress tests that need real language understanding:
-- `pol-14`, a paraphrased question with none of the policy's keywords.
-- `oos-02`, a question about home-loan rates when no home-loan policy exists. A keyword matcher returns the personal-loan rates; the right answer is "I don't have that."
-
-Run the eval with your key and record the Gemini numbers here.
+- `pol-14`, a paraphrased question with none of the policy's keywords (passes with hybrid retrieval).
+- `oos-02`, a question about home-loan rates when no home-loan policy exists. A keyword matcher returns the personal-loan rates; Gemini correctly answers "I don't have that" and passes.
 
 ## Deploy to AWS (App Runner)
 
